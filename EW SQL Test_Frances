@@ -27,9 +27,11 @@ LoanAcctsRanked AS (
         ROW_NUMBER() OVER(
             PARTITION BY 
                 dlb.customer_id, dlb.customer_system
-            ORDER BY dlb.balance DESC, dlb.acct_open_date ASC, dlb.loan_acct_nbr ASC as RowNum)
+            ORDER BY 
+                dlb.balance DESC, dlb.acct_open_date ASC, dlb.loan_acct_nbr ASC) 
+        AS RowNum
     FROM
-        daily_loan_balance dlb
+        daily_loan_balance AS dlb
     WHERE
         dlb.end_date = '2023-12-31'
 ),
@@ -74,7 +76,7 @@ LoanOnlyCust AS (
 
 --Merge all 5 required data columns into 1 single table.
 
-CustomerLoanSummary AS(
+CustomerLoanSummary AS (
     SELECT
         LOC.customer_id, 
         LOC.customer_system, 
