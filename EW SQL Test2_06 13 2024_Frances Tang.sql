@@ -3,8 +3,9 @@
 -- step 1: on group level, identify the top 100 commercial customer groups (commerical_ind = 1) based on the group's total deposit balance.
 -- step 2: on customer level, (commerical_ind = 1), calculate their total deposit balance, count of deposit accounts, and minimum/earliest account open date.
 -- step 3: on customer level, rank customers by deposit balance, then count of accts, then dep acct open date.
--- step 4: select the top customer for each group
--- step 5: assign row number, using window function Row_Number and Partition by Customer_Group, filter the query to generate only rownum=1.
+-- step 4: assign row number, using window function Row_Number and Partition by Customer_Group, 
+-- step 5: select the top customer for each group. filter the query to pull only rank = 1
+-- step 6: final output table
 
 with top_groups as (
   select
@@ -16,9 +17,9 @@ with top_groups as (
   	join dim_customer
   		on dim_customer_group.group_id = dim_customer.group_id
   		and dim_customer_group.group_system = dim_customer.group_system
-  	join daily_deposit_balance as dep_bal
-  		on dim_customer.customer_id = daily_deposit_balance.customer_id
-  		and dim_customer.customer_system = daily_deposit_balance.customer_system
+  	right join daily_deposit_balance as dep_bal
+  		on dim_customer.customer_id = dep_bal.customer_id
+  		and dim_customer.customer_system = dep_bal.customer_system
   		and dep_bal.commercial_ind = 1
   		and end_date = '2023-12-31'
   group by Group_Total_Commercial_Deposit_Balance DESC 
@@ -29,13 +30,12 @@ with top_groups as (
     select 
     	customer_id,
     	customer_system,
-    	SUM(dep_bal.balance) as comm_cust_dep,
-    	count(distinct dep_bal.deposit_acct_nbr) as count_dep_accts,
-    	MIN(dep_bal.acct_open_date) as oldest_dep_acct
+    	SUM(balance) as comm_cust_dep,
+    	count(distinct deposit_acct_nbr) as count_dep_accts,
+    	MIN(acct_open_date) as oldest_dep_acct
     from daily_deposit_balance
     where 
-    	end_date = '2023-12-31'
-    	and commercial_ind = 1
+    	end_date = '2023-12-31' and commercial_ind = 1
     group by 
     	customer_id,
     	customer_system
@@ -51,17 +51,17 @@ with top_groups as (
     	comm_cust_dep_accts.count_dep_accts,
     	comm_cust_dep_accts.oldest_dep_acct
     	ROW_NUMBER() OVER (PARTITION BY 
-                           dim_customer_group.group_id, 
-                           dim_customer_group.group_system 
+	                           dim_customer_group.group_id, 
+	                           dim_customer_group.group_system 
                            order by 
-                           comm_cust_dep_accts.comm_cust_dep DESC, 
-                           comm_cust_dep_accts.count_dep_accts DESC,
-                           comm_cust_dep_accts.oldest_dep_acct ASC
+	                           comm_cust_dep_accts.comm_cust_dep DESC, 
+	                           comm_cust_dep_accts.count_dep_accts DESC,
+	                           comm_cust_dep_accts.oldest_dep_acct ASC
                           ) as cust_rank_in_group
     from comm_cust_dep_accts
  	join dim_customer
-         on comm_cust_dep_accts.customer_id = dim_customer.customer_id
-    join dim_customer_group
+         	on comm_cust_dep_accts.customer_id = dim_customer.customer_id
+	join dim_customer_group
          on dim_customer.group_id = dim_customer_group.group_id
    ),
    
@@ -94,4 +94,4 @@ from top_groups
 		on top_customer_for_group.group_id = dim_customer.group_id
 		on top_customer_for_group.group_system = dim_customer.group_system;
  order by 
- 	 top_groups.Group_Total_Commercial_Deposit_Balance DESC;
+ 	top_groups.Group_Total_Commercial_Deposit_Balance DESC;
