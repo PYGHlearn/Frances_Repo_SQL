@@ -1,0 +1,158 @@
+WITH LoanData AS (
+    SELECT 
+        dlb.Customer_id,
+        dlb.Customer_system,
+        dlb.loan_acct_nbr,
+        dlb.balance,
+        dlb.Acct_open_date,
+        ROW_NUMBER() OVER (
+            PARTITION BY dlb.Customer_id, dlb.Customer_system
+            ORDER BY dlb.balance DESC, dlb.Acct_open_date ASC, dlb.loan_acct_nbr ASC
+        ) AS rn
+    FROM 
+        Daily_loan_balance dlb
+    WHERE 
+        dlb.End_date = '2023-12-31'
+),
+TopLoanAccount AS (
+    SELECT 
+        ld.Customer_id,
+        ld.Customer_system,
+        ld.loan_acct_nbr,
+        ld.balance
+    FROM 
+        LoanData ld
+    WHERE 
+        ld.rn = 1
+),
+CustomerTotalLoanBalance AS (
+    SELECT 
+        dlb.Customer_id,
+        dlb.Customer_system,
+        SUM(dlb.balance) AS Total_Loan_Balance
+    FROM 
+        Daily_loan_balance dlb
+    WHERE 
+        dlb.End_date = '2023-12-31'
+    GROUP BY 
+        dlb.Customer_id, dlb.Customer_system
+),
+LoanOnlyCustomers AS (
+    SELECT 
+        ct.Customer_id,
+        ct.Customer_system,
+        ct.Total_Loan_Balance,
+        tla.loan_acct_nbr
+    FROM 
+        CustomerTotalLoanBalance ct
+    JOIN 
+        TopLoanAccount tla
+        ON ct.Customer_id = tla.Customer_id
+        AND ct.Customer_system = tla.Customer_system
+    LEFT JOIN 
+        Daily_deposit_balance ddb
+        ON ct.Customer_id = ddb.Customer_id
+        AND ct.Customer_system = ddb.Customer_system
+        AND ddb.End_date = '2023-12-31'
+    WHERE 
+        ddb.Customer_id IS NULL
+),
+CustomerDetails AS (
+    SELECT 
+        loc.Customer_id,
+        loc.Customer_system,
+        dc.Customer_name,
+        loc.Total_Loan_Balance,
+        loc.loan_acct_nbr
+    FROM 
+        LoanOnlyCustomers loc
+    JOIN 
+        Dim_Customer dc
+        ON loc.Customer_id = dc.Customer_id
+        AND loc.Customer_system = dc.Customer_system
+)
+SELECT TOP 100
+    cd.Customer_id,
+    cd.Customer_system,
+    cd.Customer_name,
+    cd.Total_Loan_Balance,
+    cd.loan_acct_nbr AS Primary_loan_acct_nbr
+FROM 
+    CustomerDetails cd
+ORDER BY 
+    cd.Total_Loan_Balance DESC;
+
+
+
+
+From ChatGPT
+WITH CustomerCommercialBalances AS (
+    SELECT 
+        dcb.Customer_id,
+        dcb.Customer_system,
+        dcg.group_id,
+        dcg.group_system,
+        dcg.group_name,
+        dc.Customer_name,
+        SUM(dcb.balance) AS total_commercial_deposit_balance,
+        COUNT(dcb.Deposit_acct_nbr) AS commercial_deposit_acct_count,
+        MIN(dcb.Acct_open_date) AS earliest_commercial_deposit_acct_open_date
+    FROM 
+        daily_deposit_balance dcb
+    INNER JOIN 
+        Dim_Customer dc ON dcb.Customer_id = dc.Customer_id 
+                         AND dcb.Customer_system = dc.Customer_system
+    INNER JOIN 
+        Dim_Customer_group dcg ON dc.Group_id = dcg.group_id 
+                                AND dc.Group_system = dcg.group_system
+    WHERE 
+        dcb.Commercial_ind = 1 
+        AND dcb.End_date = '2022-12-31'
+    GROUP BY 
+        dcb.Customer_id,
+        dcb.Customer_system,
+        dcg.group_id,
+        dcg.group_system,
+        dcg.group_name,
+        dc.Customer_name
+),
+RankedCustomers AS (
+    SELECT 
+        ccb.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY ccb.group_id, ccb.group_system 
+            ORDER BY 
+                ccb.total_commercial_deposit_balance DESC,
+                ccb.commercial_deposit_acct_count DESC,
+                ccb.earliest_commercial_deposit_acct_open_date ASC
+        ) AS rn
+    FROM 
+        CustomerCommercialBalances ccb
+),
+TopCustomerGroups AS (
+    SELECT 
+        rc.group_id,
+        rc.group_system,
+        rc.group_name,
+        rc.Customer_id,
+        rc.Customer_system,
+        rc.Customer_name,
+        SUM(rc.total_commercial_deposit_balance) OVER (PARTITION BY rc.group_id, rc.group_system) AS group_total_commercial_deposit_balance
+    FROM 
+        RankedCustomers rc
+    WHERE 
+        rc.rn = 1
+)
+SELECT 
+    TOP 100 
+    tcg.group_id,
+    tcg.group_system,
+    tcg.group_name,
+    tcg.group_total_commercial_deposit_balance,
+    tcg.Customer_id,
+    tcg.Customer_system,
+    tcg.Customer_name
+FROM 
+    TopCustomerGroups tcg
+ORDER BY 
+    tcg.group_total_commercial_deposit_balance DESC;
