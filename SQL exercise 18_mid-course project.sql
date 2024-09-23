@@ -67,13 +67,13 @@ select
     month(website_sessions.created_at) as Mth,
     count(distinct case when utm_source='gsearch' then website_sessions.website_session_id else null end) as gsearch_paid_sessions,
     count(distinct case when utm_source='bsearch' then website_sessions.website_session_id else null end) as bsearch_paid_sessions,
-	count(distinct case when utm_source is null and http_referer is not null then website_sessions.website_session_id else null end) as organic_search_sessions,
-	count(distinct case when utm_source is null and http_referer is null then website_sessions.website_session_id else null end) as direct_type_in_sessions
+count(distinct case when utm_source is null and http_referer is not null then website_sessions.website_session_id else null end) as organic_search_sessions,
+count(distinct case when utm_source is null and http_referer is null then website_sessions.website_session_id else null end) as direct_type_in_sessions
+
 from website_sessions
 	left join orders
 		on website_sessions.website_session_id = orders.website_session_id
-where 
-	website_sessions.created_at < '2012-11-27'
+	where website_sessions.created_at < '2012-11-27'
 group by 1,2;
 
 
@@ -355,7 +355,6 @@ select
 from website_pageviews
 where pageview_url in ('/billing', '/billing-2')
 	and created_at between '2012-10-27' and '2012-11-27';
-
 
 -- 1,194 billing sessions past month
 -- lift:  $8.52 per billing page view.
